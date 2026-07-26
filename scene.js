@@ -9,6 +9,13 @@ const RIPPLE_FRAME_COUNT = 99;
 const RIPPLE_DURATION = RIPPLE_FRAME_COUNT / RIPPLE_FPS;
 const RIPPLE_RADIUS = 600;
 const WAVE_BAND_WIDTH = 115;
+const RIPPLE_SOUND = "./freesound_community-water-drip-45622.mp3";
+const soundPool = Array.from({ length: 5 }, () => {
+  const audio = new Audio(RIPPLE_SOUND);
+  audio.preload = "auto";
+  audio.volume = 0.72;
+  return audio;
+});
 
 // All values use the original artwork's 1920 × 3840 coordinate system.
 // Keeping the scene data separate makes it straightforward to animate an
@@ -108,11 +115,32 @@ function createRipple(x, y) {
 stage.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 && event.pointerType === "mouse") return;
 
+  playRippleSound();
+
   const bounds = stage.getBoundingClientRect();
   const x = (event.clientX - bounds.left) / bounds.width * ARTBOARD_WIDTH;
   const y = (event.clientY - bounds.top) / bounds.height * ARTBOARD_HEIGHT;
   createRipple(x, y);
 });
+
+function playRippleSound() {
+  let audio = soundPool.find((item) => item.paused || item.ended);
+
+  // Keep rapid multi-touch/click interactions audible instead of cutting off
+  // the sound that is already playing.
+  if (!audio) {
+    audio = new Audio(RIPPLE_SOUND);
+    audio.preload = "auto";
+    audio.volume = 0.72;
+    soundPool.push(audio);
+  }
+
+  audio.currentTime = 0;
+  audio.play().catch(() => {
+    // A click is already a valid user gesture on normal mobile browsers.
+    // Silently ignore stricter browser/audio-mode policies.
+  });
+}
 
 let previousTime = performance.now();
 
