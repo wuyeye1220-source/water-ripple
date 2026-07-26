@@ -9,13 +9,16 @@ const RIPPLE_FRAME_COUNT = 76;
 const RIPPLE_DURATION = RIPPLE_FRAME_COUNT / RIPPLE_FPS;
 const RIPPLE_RADIUS = 600;
 const WAVE_BAND_WIDTH = 115;
-const RIPPLE_SOUND = "./freesound_community-water-drip-45622.mp3";
-const soundPool = Array.from({ length: 5 }, () => {
-  const audio = new Audio(RIPPLE_SOUND);
-  audio.preload = "auto";
-  audio.volume = 0.72;
-  return audio;
-});
+const RIPPLE_SOUNDS = [
+  "./freesound_community-water-splash-1.mp3",
+  "./freesound_community-water-splash-2.mp3",
+  "./freesound_community-water-splash-3.mp3",
+];
+const soundPools = new Map(RIPPLE_SOUNDS.map((source) => [
+  source,
+  Array.from({ length: 3 }, () => createSound(source)),
+]));
+let previousSound = -1;
 
 // All values use the original artwork's 1920 × 3840 coordinate system.
 // Keeping the scene data separate makes it straightforward to animate an
@@ -124,15 +127,26 @@ stage.addEventListener("pointerdown", (event) => {
 });
 
 function playRippleSound() {
-  let audio = soundPool.find((item) => item.paused || item.ended);
+  // Pick either of the other two sounds after the first click. This remains
+  // random while avoiding an accidental same-sound streak.
+  let soundIndex;
+  if (previousSound < 0) {
+    soundIndex = Math.floor(Math.random() * RIPPLE_SOUNDS.length);
+  } else {
+    const offset = 1 + Math.floor(Math.random() * (RIPPLE_SOUNDS.length - 1));
+    soundIndex = (previousSound + offset) % RIPPLE_SOUNDS.length;
+  }
+  previousSound = soundIndex;
 
-  // Keep rapid multi-touch/click interactions audible instead of cutting off
-  // the sound that is already playing.
+  const source = RIPPLE_SOUNDS[soundIndex];
+  const pool = soundPools.get(source);
+  let audio = pool.find((item) => item.paused || item.ended);
+
+  // Keep rapid multi-touch interactions audible instead of cutting off a
+  // previous instance of the randomly selected sound.
   if (!audio) {
-    audio = new Audio(RIPPLE_SOUND);
-    audio.preload = "auto";
-    audio.volume = 0.72;
-    soundPool.push(audio);
+    audio = createSound(source);
+    pool.push(audio);
   }
 
   audio.currentTime = 0;
@@ -140,6 +154,14 @@ function playRippleSound() {
     // A click is already a valid user gesture on normal mobile browsers.
     // Silently ignore stricter browser/audio-mode policies.
   });
+}
+
+function createSound(source) {
+  const audio = new Audio(source);
+  audio.preload = "auto";
+  audio.volume = 0.72;
+  audio.load();
+  return audio;
 }
 
 let previousTime = performance.now();
