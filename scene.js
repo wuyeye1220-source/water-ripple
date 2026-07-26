@@ -14,10 +14,24 @@ const RIPPLE_SOUNDS = [
   "./freesound_community-water-splash-2.mp3",
   "./freesound_community-water-splash-3.mp3",
 ];
-const soundPools = new Map(RIPPLE_SOUNDS.map((source) => [
-  source,
-  Array.from({ length: 3 }, () => createSound(source)),
-]));
+const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+const audioContext = AudioContextClass
+  ? new AudioContextClass({ latencyHint: "interactive" })
+  : null;
+const audioBuffers = new Map();
+const audioReady = audioContext
+  ? Promise.all(RIPPLE_SOUNDS.map(async (source) => {
+      const response = await fetch(source);
+      const encodedAudio = await response.arrayBuffer();
+      audioBuffers.set(source, await audioContext.decodeAudioData(encodedAudio));
+    }))
+  : Promise.resolve();
+let rippleBlob = null;
+const rippleReady = fetch("./water-ripple.webp")
+  .then((response) => response.blob())
+  .then((blob) => {
+    rippleBlob = blob;
+  });
 let previousSound = -1;
 
 // All values use the original artwork's 1920 × 3840 coordinate system.
@@ -86,7 +100,10 @@ const imageLoads = scene.map((layer, index) => new Promise((resolve) => {
   bodies.push(body);
 }));
 
-Promise.all(imageLoads).then(() => {
+Promise.all([Promise.all(imageLoads), audioReady, rippleReady]).then(() => {
+  document.body.classList.add("is-ready");
+}).catch(() => {
+  // The visual scene remains usable if a browser blocks optional preloading.
   document.body.classList.add("is-ready");
 });
 
@@ -96,12 +113,12 @@ const rippleSession = Date.now().toString(36);
 
 function createRipple(x, y) {
   const image = document.createElement("img");
+  const objectUrl = rippleBlob ? URL.createObjectURL(rippleBlob) : null;
   image.className = "water-ripple";
   image.alt = "";
-  // A unique query string gives every click an independent image resource and
-  // playback timeline. URL fragments are not sufficient here because browsers
-  // may share the same animated-image clock and begin a new ripple mid-cycle.
-  image.src =
+  // Every object URL has an independent animation clock but reuses the WebP
+  // already held in memory, avoiding a new network request on each click.
+  image.src = objectUrl ||
     `./water-ripple.webp?play=${rippleSession}-${rippleId += 1}`;
   image.style.left = `${x / ARTBOARD_WIDTH * 100}%`;
   image.style.top = `${y / ARTBOARD_HEIGHT * 100}%`;
@@ -111,6 +128,7 @@ function createRipple(x, y) {
     x,
     y,
     image,
+    objectUrl,
     startedAt: performance.now(),
   });
 }
@@ -139,29 +157,30 @@ function playRippleSound() {
   previousSound = soundIndex;
 
   const source = RIPPLE_SOUNDS[soundIndex];
-  const pool = soundPools.get(source);
-  let audio = pool.find((item) => item.paused || item.ended);
+  const buffer = audioBuffers.get(source);
 
-  // Keep rapid multi-touch interactions audible instead of cutting off a
-  // previous instance of the randomly selected sound.
-  if (!audio) {
-    audio = createSound(source);
-    pool.push(audio);
+  if (audioContext && buffer) {
+    if (audioContext.state === "suspended") {
+      audioContext.resume();
+    }
+
+    const player = audioContext.createBufferSource();
+    const gain = audioContext.createGain();
+    player.buffer = buffer;
+    gain.gain.value = 0.72;
+    player.connect(gain).connect(audioContext.destination);
+    player.start(audioContext.currentTime);
+    return;
   }
 
+  // Compatibility fallback for browsers without Web Audio.
+  const audio = new Audio(source);
+  audio.volume = 0.72;
   audio.currentTime = 0;
   audio.play().catch(() => {
     // A click is already a valid user gesture on normal mobile browsers.
     // Silently ignore stricter browser/audio-mode policies.
   });
-}
-
-function createSound(source) {
-  const audio = new Audio(source);
-  audio.preload = "auto";
-  audio.volume = 0.72;
-  audio.load();
-  return audio;
 }
 
 let previousTime = performance.now();
@@ -180,6 +199,7 @@ function animate(time) {
 
     if (age >= RIPPLE_DURATION) {
       ripple.image.remove();
+      if (ripple.objectUrl) URL.revokeObjectURL(ripple.objectUrl);
       ripples.splice(i, 1);
       continue;
     }
