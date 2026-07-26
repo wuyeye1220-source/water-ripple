@@ -1,0 +1,104 @@
+:root {
+  color-scheme: light;
+  background: #76cfd2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100%;
+}
+
+body {
+  overflow-x: hidden;
+  background: #76cfd2;
+}
+
+.stage {
+  position: relative;
+  width: min(100%, 1920px);
+  aspect-ratio: 1 / 2;
+  margin: 0 auto;
+  overflow: hidden;
+  cursor: crosshair;
+  touch-action: manipulation;
+}
+
+.scene-background {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  background: #76cfd2;
+  z-index: 0;
+}
+
+.ripple-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.water-ripple {
+  position: absolute;
+  display: block;
+  width: 62.5%;
+  height: auto;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+}
+
+.scene-elements {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.scene-element {
+  position: absolute;
+  display: block;
+  width: calc(var(--width) / 1920 * 100%);
+  height: auto;
+  left: calc(var(--x) / 1920 * 100%);
+  top: calc(var(--y) / 3840 * 100%);
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-drag: none;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.scene-element:hover {
+  outline: 1px dashed rgb(255 255 255 / 45%);
+  outline-offset: 2px;
+}
+
+#loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: rgb(255 255 255 / 82%);
+  font: 14px/1.5 system-ui, sans-serif;
+  letter-spacing: .08em;
+  background: #76cfd2;
+  z-index: 3;
+  transition: opacity .35s ease;
+}
+
+.is-ready #loading {
+  pointer-events: none;
+  opacity: 0;
+}

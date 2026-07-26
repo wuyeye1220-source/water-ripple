@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#79d4d5">
+  <title>荷塘画布</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="stage" aria-label="荷塘长画布">
+    <img class="scene-background" src="./bg.png" alt="">
+    <div id="ripple-layer" class="ripple-layer" aria-hidden="true"></div>
+    <div id="scene-elements" class="scene-elements" aria-label="独立荷塘元素"></div>
+    <p id="loading" role="status">画布加载中…</p>
+  </main>
+  <script src="./scene.js"></script>
+</body>
+</html>
