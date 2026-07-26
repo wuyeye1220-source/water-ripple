@@ -19,11 +19,14 @@ const audioContext = AudioContextClass
   ? new AudioContextClass({ latencyHint: "interactive" })
   : null;
 const audioBuffers = new Map();
+const audioStartOffsets = new Map();
 const audioReady = audioContext
   ? Promise.all(RIPPLE_SOUNDS.map(async (source) => {
       const response = await fetch(source);
       const encodedAudio = await response.arrayBuffer();
-      audioBuffers.set(source, await audioContext.decodeAudioData(encodedAudio));
+      const buffer = await audioContext.decodeAudioData(encodedAudio);
+      audioBuffers.set(source, buffer);
+      audioStartOffsets.set(source, findAudioOnset(buffer));
     }))
   : Promise.resolve();
 let rippleBlob = null;
@@ -169,7 +172,7 @@ function playRippleSound() {
     player.buffer = buffer;
     gain.gain.value = 0.72;
     player.connect(gain).connect(audioContext.destination);
-    player.start(audioContext.currentTime);
+    player.start(audioContext.currentTime, audioStartOffsets.get(source) || 0);
     return;
   }
 
@@ -181,6 +184,44 @@ function playRippleSound() {
     // A click is already a valid user gesture on normal mobile browsers.
     // Silently ignore stricter browser/audio-mode policies.
   });
+}
+
+function findAudioOnset(buffer) {
+  const blockSize = 128;
+  let peak = 0;
+
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    for (let i = 0; i < samples.length; i += 1) {
+      peak = Math.max(peak, Math.abs(samples[i]));
+    }
+  }
+
+  // Relative threshold adapts to each recording; the absolute floor prevents
+  // encoder noise in an otherwise silent MP3 lead-in from counting as sound.
+  const threshold = Math.max(0.0025, peak * 0.015);
+  let onsetSample = 0;
+
+  search:
+  for (let start = 0; start < buffer.length; start += blockSize) {
+    const end = Math.min(start + blockSize, buffer.length);
+    let energy = 0;
+
+    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+      const samples = buffer.getChannelData(channel);
+      for (let i = start; i < end; i += 1) {
+        energy = Math.max(energy, Math.abs(samples[i]));
+      }
+    }
+
+    if (energy >= threshold) {
+      onsetSample = start;
+      break search;
+    }
+  }
+
+  // Retain 3 ms before the detected transient to avoid clipping its attack.
+  return Math.max(0, onsetSample / buffer.sampleRate - 0.003);
 }
 
 let previousTime = performance.now();
