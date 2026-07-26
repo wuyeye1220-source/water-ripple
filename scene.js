@@ -16,6 +16,14 @@ const audioContext = AudioContextClass
   : null;
 let audioBuffer = null;
 let audioStartOffset = 0;
+const nativeSoundPool = Array.from({ length: 4 }, () => {
+  const audio = new Audio(RIPPLE_SOUND);
+  audio.preload = "auto";
+  audio.volume = 0.72;
+  audio.setAttribute("playsinline", "");
+  audio.load();
+  return audio;
+});
 const audioReady = audioContext
   ? (async () => {
       const response = await fetch(RIPPLE_SOUND);
@@ -144,11 +152,11 @@ stage.addEventListener("pointerdown", (event) => {
 function playRippleSound() {
   if (audioContext && audioBuffer) {
     if (audioContext.state === "suspended") {
-      audioContext.resume().then(() => {
-        startDecodedRippleSound();
-      }).catch(() => {
-        playFallbackRippleSound();
-      });
+      // iOS Safari and embedded mobile browsers can defer AudioContext resume.
+      // Native audio is started synchronously inside this pointer gesture so
+      // the first tap is still audible, while Web Audio unlocks for later taps.
+      playNativeRippleSound();
+      audioContext.resume().catch(() => {});
       return;
     }
 
@@ -156,7 +164,7 @@ function playRippleSound() {
     return;
   }
 
-  playFallbackRippleSound();
+  playNativeRippleSound();
 }
 
 function startDecodedRippleSound() {
@@ -175,13 +183,24 @@ function startDecodedRippleSound() {
   player.start(now, audioStartOffset);
 }
 
-function playFallbackRippleSound() {
-  const audio = new Audio(RIPPLE_SOUND);
-  audio.volume = 0.72;
-  audio.currentTime = 0;
+function playNativeRippleSound() {
+  let audio = nativeSoundPool.find((item) => item.paused || item.ended);
+  if (!audio) {
+    audio = new Audio(RIPPLE_SOUND);
+    audio.preload = "auto";
+    audio.volume = 0.72;
+    audio.setAttribute("playsinline", "");
+    nativeSoundPool.push(audio);
+  }
+
+  try {
+    audio.currentTime = audioStartOffset;
+  } catch {
+    audio.currentTime = 0;
+  }
   audio.play().catch(() => {
-    // A click is already a valid user gesture on normal mobile browsers.
-    // Silently ignore stricter browser/audio-mode policies.
+    // The page remains interactive if the device is muted or its host app
+    // explicitly forbids media playback.
   });
 }
 
