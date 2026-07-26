@@ -9,25 +9,20 @@ const RIPPLE_FRAME_COUNT = 76;
 const RIPPLE_DURATION = RIPPLE_FRAME_COUNT / RIPPLE_FPS;
 const RIPPLE_RADIUS = 600;
 const WAVE_BAND_WIDTH = 115;
-const RIPPLE_SOUNDS = [
-  "./freesound_community-water-splash-1.mp3",
-  "./freesound_community-water-splash-2.mp3",
-  "./freesound_community-water-splash-3.mp3",
-];
+const RIPPLE_SOUND = "./freesound_community-water-splash-1.mp3";
 const AudioContextClass = window.AudioContext || window.webkitAudioContext;
 const audioContext = AudioContextClass
   ? new AudioContextClass({ latencyHint: "interactive" })
   : null;
-const audioBuffers = new Map();
-const audioStartOffsets = new Map();
+let audioBuffer = null;
+let audioStartOffset = 0;
 const audioReady = audioContext
-  ? Promise.all(RIPPLE_SOUNDS.map(async (source) => {
-      const response = await fetch(source);
+  ? (async () => {
+      const response = await fetch(RIPPLE_SOUND);
       const encodedAudio = await response.arrayBuffer();
-      const buffer = await audioContext.decodeAudioData(encodedAudio);
-      audioBuffers.set(source, buffer);
-      audioStartOffsets.set(source, findAudioOnset(buffer));
-    }))
+      audioBuffer = await audioContext.decodeAudioData(encodedAudio);
+      audioStartOffset = findAudioOnset(audioBuffer);
+    })()
   : Promise.resolve();
 let rippleBlob = null;
 const rippleReady = fetch("./water-ripple.webp")
@@ -35,7 +30,6 @@ const rippleReady = fetch("./water-ripple.webp")
   .then((blob) => {
     rippleBlob = blob;
   });
-let previousSound = -1;
 
 // All values use the original artwork's 1920 × 3840 coordinate system.
 // Keeping the scene data separate makes it straightforward to animate an
@@ -148,36 +142,32 @@ stage.addEventListener("pointerdown", (event) => {
 });
 
 function playRippleSound() {
-  // Pick either of the other two sounds after the first click. This remains
-  // random while avoiding an accidental same-sound streak.
-  let soundIndex;
-  if (previousSound < 0) {
-    soundIndex = Math.floor(Math.random() * RIPPLE_SOUNDS.length);
-  } else {
-    const offset = 1 + Math.floor(Math.random() * (RIPPLE_SOUNDS.length - 1));
-    soundIndex = (previousSound + offset) % RIPPLE_SOUNDS.length;
-  }
-  previousSound = soundIndex;
-
-  const source = RIPPLE_SOUNDS[soundIndex];
-  const buffer = audioBuffers.get(source);
-
-  if (audioContext && buffer) {
+  if (audioContext && audioBuffer) {
     if (audioContext.state === "suspended") {
       audioContext.resume();
     }
 
     const player = audioContext.createBufferSource();
     const gain = audioContext.createGain();
-    player.buffer = buffer;
-    gain.gain.value = 0.72;
+    const now = audioContext.currentTime;
+    const audibleDuration = audioBuffer.duration - audioStartOffset;
+    const fadeOutStart = now + Math.max(0.02, audibleDuration - 0.045);
+
+    player.buffer = audioBuffer;
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.72, now + 0.004);
+    gain.gain.setValueAtTime(0.72, fadeOutStart);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      now + audibleDuration,
+    );
     player.connect(gain).connect(audioContext.destination);
-    player.start(audioContext.currentTime, audioStartOffsets.get(source) || 0);
+    player.start(now, audioStartOffset);
     return;
   }
 
   // Compatibility fallback for browsers without Web Audio.
-  const audio = new Audio(source);
+  const audio = new Audio(RIPPLE_SOUND);
   audio.volume = 0.72;
   audio.currentTime = 0;
   audio.play().catch(() => {
