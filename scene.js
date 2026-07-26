@@ -144,29 +144,38 @@ stage.addEventListener("pointerdown", (event) => {
 function playRippleSound() {
   if (audioContext && audioBuffer) {
     if (audioContext.state === "suspended") {
-      audioContext.resume();
+      audioContext.resume().then(() => {
+        startDecodedRippleSound();
+      }).catch(() => {
+        playFallbackRippleSound();
+      });
+      return;
     }
 
-    const player = audioContext.createBufferSource();
-    const gain = audioContext.createGain();
-    const now = audioContext.currentTime;
-    const audibleDuration = audioBuffer.duration - audioStartOffset;
-    const fadeOutStart = now + Math.max(0.02, audibleDuration - 0.045);
-
-    player.buffer = audioBuffer;
-    gain.gain.setValueAtTime(0.001, now);
-    gain.gain.exponentialRampToValueAtTime(0.72, now + 0.004);
-    gain.gain.setValueAtTime(0.72, fadeOutStart);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      now + audibleDuration,
-    );
-    player.connect(gain).connect(audioContext.destination);
-    player.start(now, audioStartOffset);
+    startDecodedRippleSound();
     return;
   }
 
-  // Compatibility fallback for browsers without Web Audio.
+  playFallbackRippleSound();
+}
+
+function startDecodedRippleSound() {
+  const player = audioContext.createBufferSource();
+  const gain = audioContext.createGain();
+  const now = audioContext.currentTime;
+  const audibleDuration = audioBuffer.duration - audioStartOffset;
+  const fadeOutStart = now + Math.max(0.02, audibleDuration - 0.045);
+
+  player.buffer = audioBuffer;
+  gain.gain.setValueAtTime(0.001, now);
+  gain.gain.exponentialRampToValueAtTime(0.72, now + 0.004);
+  gain.gain.setValueAtTime(0.72, fadeOutStart);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + audibleDuration);
+  player.connect(gain).connect(audioContext.destination);
+  player.start(now, audioStartOffset);
+}
+
+function playFallbackRippleSound() {
   const audio = new Audio(RIPPLE_SOUND);
   audio.volume = 0.72;
   audio.currentTime = 0;
