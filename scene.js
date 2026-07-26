@@ -82,14 +82,17 @@ Promise.all(imageLoads).then(() => {
 
 const ripples = [];
 let rippleId = 0;
+const rippleSession = Date.now().toString(36);
 
 function createRipple(x, y) {
   const image = document.createElement("img");
   image.className = "water-ripple";
   image.alt = "";
-  // One animated WebP replaces 99 individual PNG swaps. The fragment gives
-  // every click its own playback timeline while retaining the decoded asset.
-  image.src = `./water-ripple.webp#ripple-${rippleId += 1}`;
+  // A unique query string gives every click an independent image resource and
+  // playback timeline. URL fragments are not sufficient here because browsers
+  // may share the same animated-image clock and begin a new ripple mid-cycle.
+  image.src =
+    `./water-ripple.webp?play=${rippleSession}-${rippleId += 1}`;
   image.style.left = `${x / ARTBOARD_WIDTH * 100}%`;
   image.style.top = `${y / ARTBOARD_HEIGHT * 100}%`;
   rippleLayer.append(image);
