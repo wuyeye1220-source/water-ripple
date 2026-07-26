@@ -151,12 +151,18 @@ stage.addEventListener("pointerdown", (event) => {
 
 function playRippleSound() {
   if (audioContext && audioBuffer) {
-    if (audioContext.state === "suspended") {
-      // iOS Safari and embedded mobile browsers can defer AudioContext resume.
-      // Native audio is started synchronously inside this pointer gesture so
-      // the first tap is still audible, while Web Audio unlocks for later taps.
-      playNativeRippleSound();
-      audioContext.resume().catch(() => {});
+    if (audioContext.state !== "running") {
+      // Mobile browsers may report "suspended" or "interrupted". Preserve this
+      // tap and play it as soon as the audio system has actually resumed.
+      audioContext.resume().then(() => {
+        if (audioContext.state === "running") {
+          startDecodedRippleSound();
+        } else {
+          playNativeRippleSound();
+        }
+      }).catch(() => {
+        playNativeRippleSound();
+      });
       return;
     }
 
