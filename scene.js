@@ -9,29 +9,25 @@ const RIPPLE_FRAME_COUNT = 76;
 const RIPPLE_DURATION = RIPPLE_FRAME_COUNT / RIPPLE_FPS;
 const RIPPLE_RADIUS = 600;
 const WAVE_BAND_WIDTH = 115;
-const RIPPLE_SOUND = "./freesound_community-water-splash-1.mp3";
-const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-const audioContext = AudioContextClass
-  ? new AudioContextClass({ latencyHint: "interactive" })
-  : null;
-let audioBuffer = null;
-let audioStartOffset = 0;
-const nativeSoundPool = Array.from({ length: 4 }, () => {
-  const audio = new Audio(RIPPLE_SOUND);
+const rippleSoundFiles = [
+  "./touch music/touch1.wav",
+  "./touch music/touch2.wav",
+  "./touch music/touch3.wav",
+  "./touch music/touch4.wav",
+  "./touch music/touch5.wav",
+  "./touch music/touch6.wav",
+  "./touch music/touch7.wav",
+  "./touch music/touch8.wav",
+];
+let rippleSoundIndex = 0;
+let activeRippleSound = null;
+const rippleSoundPool = rippleSoundFiles.map((src) => {
+  const audio = new Audio(src);
   audio.preload = "auto";
   audio.volume = 0.72;
   audio.setAttribute("playsinline", "");
-  audio.load();
   return audio;
 });
-const audioReady = audioContext
-  ? (async () => {
-      const response = await fetch(RIPPLE_SOUND);
-      const encodedAudio = await response.arrayBuffer();
-      audioBuffer = await audioContext.decodeAudioData(encodedAudio);
-      audioStartOffset = findAudioOnset(audioBuffer);
-    })()
-  : Promise.resolve();
 let rippleBlob = null;
 const rippleReady = fetch("./water-ripple.webp")
   .then((response) => response.blob())
@@ -105,7 +101,7 @@ const imageLoads = scene.map((layer, index) => new Promise((resolve) => {
   bodies.push(body);
 }));
 
-Promise.all([Promise.all(imageLoads), audioReady, rippleReady]).then(() => {
+Promise.all([Promise.all(imageLoads), rippleReady]).then(() => {
   document.body.classList.add("is-ready");
 }).catch(() => {
   // The visual scene remains usable if a browser blocks optional preloading.
@@ -150,102 +146,29 @@ stage.addEventListener("pointerdown", (event) => {
 });
 
 function playRippleSound() {
-  if (audioContext && audioBuffer) {
-    if (audioContext.state !== "running") {
-      // Mobile browsers may report "suspended" or "interrupted". Preserve this
-      // tap and play it as soon as the audio system has actually resumed.
-      audioContext.resume().then(() => {
-        if (audioContext.state === "running") {
-          startDecodedRippleSound();
-        } else {
-          playNativeRippleSound();
-        }
-      }).catch(() => {
-        playNativeRippleSound();
-      });
-      return;
+  const sound = rippleSoundPool[rippleSoundIndex];
+  rippleSoundIndex = (rippleSoundIndex + 1) % rippleSoundPool.length;
+
+  if (activeRippleSound && activeRippleSound !== sound) {
+    try {
+      activeRippleSound.pause();
+      activeRippleSound.currentTime = 0;
+    } catch {
+      // Ignore browser-specific playback reset issues.
     }
-
-    startDecodedRippleSound();
-    return;
   }
 
-  playNativeRippleSound();
-}
-
-function startDecodedRippleSound() {
-  const player = audioContext.createBufferSource();
-  const gain = audioContext.createGain();
-  const now = audioContext.currentTime;
-  const audibleDuration = audioBuffer.duration - audioStartOffset;
-  const fadeOutStart = now + Math.max(0.02, audibleDuration - 0.045);
-
-  player.buffer = audioBuffer;
-  gain.gain.setValueAtTime(0.001, now);
-  gain.gain.exponentialRampToValueAtTime(0.72, now + 0.004);
-  gain.gain.setValueAtTime(0.72, fadeOutStart);
-  gain.gain.exponentialRampToValueAtTime(0.001, now + audibleDuration);
-  player.connect(gain).connect(audioContext.destination);
-  player.start(now, audioStartOffset);
-}
-
-function playNativeRippleSound() {
-  let audio = nativeSoundPool.find((item) => item.paused || item.ended);
-  if (!audio) {
-    audio = new Audio(RIPPLE_SOUND);
-    audio.preload = "auto";
-    audio.volume = 0.72;
-    audio.setAttribute("playsinline", "");
-    nativeSoundPool.push(audio);
-  }
+  activeRippleSound = sound;
 
   try {
-    audio.currentTime = audioStartOffset;
+    sound.currentTime = 0;
   } catch {
-    audio.currentTime = 0;
+    // Some browsers may reject resetting currentTime before playback.
   }
-  audio.play().catch(() => {
-    // The page remains interactive if the device is muted or its host app
-    // explicitly forbids media playback.
+
+  sound.play().catch(() => {
+    // The page remains interactive if playback is blocked by the browser.
   });
-}
-
-function findAudioOnset(buffer) {
-  const blockSize = 128;
-  let peak = 0;
-
-  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-    const samples = buffer.getChannelData(channel);
-    for (let i = 0; i < samples.length; i += 1) {
-      peak = Math.max(peak, Math.abs(samples[i]));
-    }
-  }
-
-  // Relative threshold adapts to each recording; the absolute floor prevents
-  // encoder noise in an otherwise silent MP3 lead-in from counting as sound.
-  const threshold = Math.max(0.0025, peak * 0.015);
-  let onsetSample = 0;
-
-  search:
-  for (let start = 0; start < buffer.length; start += blockSize) {
-    const end = Math.min(start + blockSize, buffer.length);
-    let energy = 0;
-
-    for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
-      const samples = buffer.getChannelData(channel);
-      for (let i = start; i < end; i += 1) {
-        energy = Math.max(energy, Math.abs(samples[i]));
-      }
-    }
-
-    if (energy >= threshold) {
-      onsetSample = start;
-      break search;
-    }
-  }
-
-  // Retain 3 ms before the detected transient to avoid clipping its attack.
-  return Math.max(0, onsetSample / buffer.sampleRate - 0.003);
 }
 
 let previousTime = performance.now();
